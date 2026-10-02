@@ -46,3 +46,38 @@ python src/refresh_excel.py --path "C:\Path\To\Excel\Files" --month "May'26"
 Я формулировала требования, тестировала решения и адаптировала код под
 специфику бизнес-процессов компании. Все решения валидированы на реальных
 данных и внедрены в производство.
+
+## Схема работы скрипта
+```mermaid
+flowchart TD
+   CFG[("Конфигурация:<br/>TIMEOUT_SECONDS = 600<br/>EXCEL_VISIBLE = False")]
+   M["Запуск скрипта"] --> I["Ввод данных:<br/>путь к папке и фильтр по месяцу"]
+   CFG -.-> M
+   I --> S["Поиск файлов:<br/>рекурсивный обход папки<br/>.xlsx, .xlsm, .xls, .xlsb"]
+   S --> F{"Фильтр по месяцу<br/>задан?"}
+   F -- да --> F2["Фильтрация по имени файла<br/>с нормализацией апострофов"]
+   F -- нет --> F3["Берём все найденные файлы"]
+   F2 --> N["Список файлов для обработки"]
+   F3 --> N
+   N --> L["Цикл по каждому файлу"]
+   L --> P["process_file_in_subprocess:<br/>запуск дочернего процесса Python"]
+   P --> E["Открытие Excel через win32com:<br/>DisplayAlerts=False<br/>AskToUpdateLinks=False"]
+   E --> O["Workbooks.Open<br/>UpdateLinks=0"]
+   O --> R["wb.RefreshAll<br/>Обновление ODC-подключений<br/>к OLAP-кубу"]
+   R --> C["CalculateUntilAsyncQueriesDone<br/>Ожидание завершения запросов"]
+   C --> W["time.sleep 2 сек"]
+   W --> SV["wb.Save + wb.Close<br/>excel.Quit"]
+   SV --> OK{"Успешно?"}
+   OK -- да --> SU["SUCCESS<br/>Добавить в success_files"]
+   OK -- нет --> ER["ERROR<br/>Добавить в failed_files"]
+   P --> T{"Таймаут<br/>600 сек?"}
+   T -- да --> TK["process.kill<br/>Завершить процесс"]
+   TK --> ER
+   SU --> NX{"Есть ещё файлы?"}
+   ER --> NX
+   NX -- да --> L
+   NX -- нет --> RP["Итоговый отчёт:<br/>успешно / с ошибками / всего"]
+   RP --> FL{"Есть ошибки?"}
+   FL -- да --> LG["Запись failed_files_log.txt:<br/>дата, статистика,<br/>список проблемных файлов<br/>с путями и причинами"]
+   FL -- нет --> END["Завершение"]
+   LG --> END
